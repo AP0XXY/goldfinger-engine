@@ -1,0 +1,144 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>GOLDFINGER</title>
+    <link rel="stylesheet" href="/static/css/goldfinger.css">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.7/dist/chart.umd.min.js"></script>
+</head>
+<body>
+
+    <!-- ═══ Top Bar ═══ -->
+    <header class="top-bar">
+        <div class="logo">GOLDFINGER</div>
+        <div class="top-bar-right">
+            <div class="balance-pill" id="balancePill">
+                <span class="balance-label">Balance</span>
+                <span class="balance-value" id="balanceValue">--</span>
+            </div>
+            <div class="pnl-badge {{ 'pnl-positive' if realized_pnl >= 0 else 'pnl-negative' }}" id="pnlBadge">
+                <span class="pnl-label">PnL</span>
+                <span class="pnl-value" id="pnlValue">${{ "%.2f"|format(realized_pnl) }}</span>
+            </div>
+        </div>
+    </header>
+
+    <!-- ═══ Stats Row ═══ -->
+    <div class="stats-row">
+        <div class="stat-card">
+            <div class="stat-value" id="statBalance">--</div>
+            <div class="stat-label">Balance</div>
+        </div>
+        <div class="stat-card">
+            <div class="stat-value {{ 'stat-positive' if realized_pnl >= 0 else 'stat-negative' }}" id="statPnl">
+                ${{ "%.2f"|format(realized_pnl) }}
+            </div>
+            <div class="stat-label">Realized PnL</div>
+        </div>
+        <div class="stat-card">
+            <div class="stat-value" id="statWinRate">{{ "%.0f"|format(win_rate) }}%</div>
+            <div class="stat-label">Win Rate</div>
+        </div>
+        <div class="stat-card">
+            <div class="stat-value" id="statPositions">--</div>
+            <div class="stat-label">Open Positions</div>
+        </div>
+    </div>
+
+    <!-- ═══ Scanner Section ═══ -->
+    <section class="scanner-section">
+        <div class="section-header">
+            <h2>Signals</h2>
+            <div class="scan-controls">
+                <button class="btn btn-scan" id="scanBtn">
+                    <span class="btn-icon">&#9906;</span> Scan
+                </button>
+                <button class="btn btn-auto" id="autoScanBtn">
+                    Auto: OFF
+                </button>
+                <span class="scan-status" id="scanStatus"></span>
+            </div>
+        </div>
+        <div id="signals-grid" class="signals-grid">
+            <!-- Empty state shown by default -->
+            <div class="empty-state" id="emptyState">
+                <div class="radar-container">
+                    <div class="radar-sweep"></div>
+                    <div class="radar-dot"></div>
+                    <div class="radar-ring ring-1"></div>
+                    <div class="radar-ring ring-2"></div>
+                    <div class="radar-ring ring-3"></div>
+                </div>
+                <p class="empty-text">Scanning Markets...</p>
+                <p class="empty-subtext">Click Scan or enable Auto-Scan to detect signals</p>
+            </div>
+        </div>
+    </section>
+
+    <!-- ═══ PnL Chart ═══ -->
+    <section class="chart-section">
+        <h2>Performance</h2>
+        <div class="chart-container">
+            <canvas id="pnlChart"></canvas>
+        </div>
+    </section>
+
+    <!-- ═══ Trade History ═══ -->
+    <section class="history-section">
+        <h2>Trade History</h2>
+        <div class="table-wrap">
+            <table>
+                <thead>
+                    <tr>
+                        <th>Time</th>
+                        <th>Market</th>
+                        <th>Side</th>
+                        <th>Price</th>
+                        <th>Qty</th>
+                        <th>Fee</th>
+                        <th>PnL</th>
+                        <th>Status</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for t in trade_history %}
+                    <tr>
+                        <td>{{ t.get('timestamp', '')[:19] }}</td>
+                        <td>{{ t.get('ticker', '') }}</td>
+                        <td class="{{ 'side-long' if t.get('side') == 'yes' else 'side-short' }}">
+                            {{ 'LONG' if t.get('side') == 'yes' else 'SHORT' }}
+                        </td>
+                        <td>${{ "%.2f"|format(t.get('price', 0)) }}</td>
+                        <td>{{ t.get('count', 0) }}</td>
+                        <td>${{ "%.4f"|format(t.get('fee', 0)) }}</td>
+                        <td class="{{ 'pnl-win' if t.get('pnl') and t.get('pnl') > 0 else 'pnl-loss' if t.get('pnl') and t.get('pnl') < 0 else 'pnl-pending' }}">
+                            {% if t.get('pnl') is not none %}
+                                ${{ "%+.4f"|format(t.get('pnl')) }}
+                            {% else %}
+                                pending
+                            {% endif %}
+                        </td>
+                        <td>{{ t.get('status', '') }}</td>
+                    </tr>
+                    {% else %}
+                    <tr>
+                        <td colspan="8" class="empty-table">No trades yet</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </section>
+
+    <!-- ═══ Chart Data (from server) ═══ -->
+    <script>
+        window.__chartData = {
+            labels: {{ chart_labels|safe }},
+            cumPnl: {{ chart_cum_pnl|safe }},
+            tradePnl: {{ chart_trade_pnl|safe }}
+        };
+    </script>
+    <script src="/static/js/goldfinger.js"></script>
+</body>
+</html>

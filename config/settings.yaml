@@ -1,0 +1,43 @@
+# Prediction Market Arbitrage Bot Configuration
+
+platforms:
+  kalshi:
+    base_url: "https://demo-api.kalshi.co/trade-api/v2"
+    ws_url: "wss://demo-api.kalshi.co/trade-api/ws/v2"
+    # Switch to production when ready:
+    # base_url: "https://api.elections.kalshi.com/trade-api/v2"
+    # ws_url: "wss://api.elections.kalshi.com/trade-api/ws/v2"
+    series_tickers:
+      - "KXBTC"
+      - "KXETH"
+
+  polymarket:
+    clob_url: "https://clob.polymarket.com"
+    gamma_url: "https://gamma-api.polymarket.com"
+    ws_url: "wss://ws-subscriptions-clob.polymarket.com/ws/market"
+    chain_id: 137
+    crypto_keywords:
+      - "Bitcoin"
+      - "BTC"
+      - "Ethereum"
+      - "ETH"
+
+arbitrage:
+  # Minimum spread (after fees) to flag as opportunity, in dollars
+  min_spread: 0.02
+  # Minimum spread percentage to flag
+  min_spread_pct: 1.5
+  # Maximum position size per trade in dollars
+  max_position: 100.0
+  # Polling interval in seconds (used when websockets unavailable)
+  poll_interval: 5
+
+logging:
+  # Where to store spread data
+  data_dir: "data/spreads"
+  # Log level
+  level: "INFO"
+
+dashboard:
+  host: "0.0.0.0"
+  port: 8050
