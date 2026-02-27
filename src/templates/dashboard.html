@@ -58,6 +58,9 @@
                 <button class="btn btn-auto" id="autoScanBtn">
                     Auto: OFF
                 </button>
+                <button class="btn btn-autotrade" id="autoTradeBtn" title="Auto-execute 3&#9733;+ signals every 45s">
+                    &#9651; AutoTrade: OFF
+                </button>
                 <span class="scan-status" id="scanStatus"></span>
             </div>
         </div>
@@ -75,6 +78,15 @@
                 <p class="empty-subtext">Click Scan or enable Auto-Scan to detect signals</p>
             </div>
         </div>
+    </section>
+
+    <!-- ═══ Auto Trade Log ═══ -->
+    <section class="autotrade-section" id="autoTradeSection" style="display:none">
+        <div class="section-header">
+            <h2>&#9651; Auto Trade Log</h2>
+            <span class="autotrade-badge" id="autoTradeBadge"></span>
+        </div>
+        <div id="autoTradeLog" class="autotrade-log"></div>
     </section>
 
     <!-- ═══ PnL Chart ═══ -->
@@ -98,7 +110,7 @@
                         <th>Price</th>
                         <th>Qty</th>
                         <th>Fee</th>
-                        <th>PnL</th>
+                        <th>Net</th>
                         <th>Status</th>
                     </tr>
                 </thead>
@@ -113,12 +125,9 @@
                         <td>${{ "%.2f"|format(t.get('price', 0)) }}</td>
                         <td>{{ t.get('count', 0) }}</td>
                         <td>${{ "%.4f"|format(t.get('fee', 0)) }}</td>
-                        <td class="{{ 'pnl-win' if t.get('pnl') and t.get('pnl') > 0 else 'pnl-loss' if t.get('pnl') and t.get('pnl') < 0 else 'pnl-pending' }}">
-                            {% if t.get('pnl') is not none %}
-                                ${{ "%+.4f"|format(t.get('pnl')) }}
-                            {% else %}
-                                pending
-                            {% endif %}
+                        <td class="{{ 'pnl-win' if t.get('net', 0) > 0 else 'pnl-loss' if t.get('pnl') is not none and t.get('net', 0) < 0 else 'pnl-pending' }}"
+                            title="{{ 'Settled P&L (net of fees)' if t.get('pnl') is not none else 'Cost deployed (pending settlement)' }}">
+                            ${{ "%+.4f"|format(t.get('net', 0)) }}
                         </td>
                         <td>{{ t.get('status', '') }}</td>
                     </tr>

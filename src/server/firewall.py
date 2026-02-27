@@ -54,6 +54,19 @@ def _format_time(minutes: float) -> str:
 
 # ── The Wall ─────────────────────────────────────────────────
 
+def _trend_label(rec: TradeRecommendation) -> str:
+    """Classify trade as With Trend / Counter Trend / Neutral — no internals exposed."""
+    trend = rec.trend
+    side = rec.side
+    if trend == "neutral":
+        return "Neutral"
+    aligned = (
+        (side == Side.YES and trend == "bullish") or
+        (side == Side.NO and trend == "bearish")
+    )
+    return "With Trend" if aligned else "Counter Trend"
+
+
 def sanitize_recommendation(rec: TradeRecommendation) -> dict:
     """Strip all strategy secrets from a recommendation.
 
@@ -70,6 +83,7 @@ def sanitize_recommendation(rec: TradeRecommendation) -> dict:
         "time_left_mins": round(rec.minutes_left, 1),
         "signal_strength": _confidence_to_stars(rec.confidence),
         "signal_label": _confidence_to_label(rec.confidence),
+        "trend_label": _trend_label(rec),
     }
 
 

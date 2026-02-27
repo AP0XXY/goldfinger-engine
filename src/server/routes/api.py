@@ -15,7 +15,7 @@ from fastapi import APIRouter, Query
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 
-from ..scanner import run_scan, run_scan_for_user, run_trade, run_trade_for_user, sync_trades_for_user
+from ..scanner import run_scan, run_scan_for_user, run_trade, run_trade_for_user, sync_trades_for_user, run_autotrade
 from ..firewall import sanitize_recommendations, sanitize_stats
 from ...data.database import get_recent_signals, get_signal_stats
 
@@ -171,6 +171,22 @@ async def sync_trades(req: SyncRequest):
         return JSONResponse(
             status_code=500,
             content={"error": "Sync failed."},
+        )
+
+
+# ── Auto-trade endpoint ──────────────────────────────────────
+
+@router.get("/autotrade")
+async def autotrade_standalone(min_stars: int = Query(3, ge=1, le=5, description="Minimum star rating to execute")):
+    """Scan and auto-execute all signals meeting the star threshold (standalone mode)."""
+    try:
+        result = await run_autotrade(min_stars=min_stars)
+        return result
+    except Exception as e:
+        logger.error(f"Autotrade failed: {e}", exc_info=True)
+        return JSONResponse(
+            status_code=500,
+            content={"error": "Autotrade failed. Check server logs."},
         )
 
 

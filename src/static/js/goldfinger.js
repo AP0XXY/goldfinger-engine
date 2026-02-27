@@ -13,16 +13,28 @@
     var AUTO_SCAN_INTERVAL = 45; // seconds
     var countdownLeft = 0;
 
+    var autoTradeTimer = null;
+    var autoTradeCountdownTimer = null;
+    var autoTradeCountdown = 0;
+    var AUTO_TRADE_INTERVAL = 45; // seconds
+    var AUTO_TRADE_MIN_STARS = 3;
+    var isAutoTrading = false;
+
     // ── DOM refs ──
     var scanBtn = document.getElementById('scanBtn');
     var autoScanBtn = document.getElementById('autoScanBtn');
+    var autoTradeBtn = document.getElementById('autoTradeBtn');
     var scanStatus = document.getElementById('scanStatus');
     var signalsGrid = document.getElementById('signals-grid');
+    var autoTradeSection = document.getElementById('autoTradeSection');
+    var autoTradeLog = document.getElementById('autoTradeLog');
+    var autoTradeBadge = document.getElementById('autoTradeBadge');
 
     // ── Init ──
     initChart();
     scanBtn.addEventListener('click', function() { runScan(false); });
     autoScanBtn.addEventListener('click', toggleAutoScan);
+    autoTradeBtn.addEventListener('click', toggleAutoTrade);
 
     // Event delegation for signal card buttons
     signalsGrid.addEventListener('click', function(e) {
@@ -97,6 +109,10 @@
             var dirClass = isLong ? 'direction-long' : 'direction-short';
             var btnClass = isLong ? 'btn-buy-long' : 'btn-buy-short';
             var stars = renderStars(s.signal_strength);
+            var trendLabel = s.trend_label || 'Neutral';
+            var trendClass = trendLabel === 'With Trend' ? 'trend-with'
+                           : trendLabel === 'Counter Trend' ? 'trend-counter'
+                           : 'trend-neutral';
 
             var card = document.createElement('div');
             card.className = 'signal-card';
@@ -108,6 +124,7 @@
                         s.asset +
                     '</span>' +
                     '<span class="direction-pill ' + dirClass + '">' + s.direction + '</span>' +
+                    '<span class="trend-pill ' + trendClass + '">' + trendLabel + '</span>' +
                 '</div>' +
                 '<div class="signal-stars">' + stars + '</div>' +
                 '<div class="signal-label">' + s.signal_label + '</div>' +
@@ -330,6 +347,125 @@
             }, 300);
         } catch(e) {
             // Audio not available — fail silently
+        }
+    }
+
+
+    // ── Auto Trade ───────────────────────────────────────────
+
+    function toggleAutoTrade() {
+        if (autoTradeTimer) {
+            // Turn OFF
+            clearInterval(autoTradeTimer);
+            clearInterval(autoTradeCountdownTimer);
+            autoTradeTimer = null;
+            autoTradeCountdownTimer = null;
+            autoTradeBtn.classList.remove('active');
+            autoTradeBtn.textContent = '\u25b3 AutoTrade: OFF';
+        } else {
+            // Turn ON
+            autoTradeBtn.classList.add('active');
+            autoTradeSection.style.display = '';
+            autoTradeCountdown = AUTO_TRADE_INTERVAL;
+            autoTradeBtn.textContent = '\u25b3 AutoTrade: ON (' + AUTO_TRADE_INTERVAL + 's)';
+            runAutoTrade();
+
+            autoTradeTimer = setInterval(function() {
+                runAutoTrade();
+                autoTradeCountdown = AUTO_TRADE_INTERVAL;
+            }, AUTO_TRADE_INTERVAL * 1000);
+
+            autoTradeCountdownTimer = setInterval(function() {
+                autoTradeCountdown--;
+                if (autoTradeCountdown > 0 && !isAutoTrading) {
+                    autoTradeBtn.textContent = '\u25b3 AutoTrade: ON (' + autoTradeCountdown + 's)';
+                }
+            }, 1000);
+        }
+    }
+
+    function runAutoTrade() {
+        if (isAutoTrading) return;
+        isAutoTrading = true;
+        autoTradeBtn.textContent = '\u25b3 AutoTrade: SCANNING...';
+
+        fetch('/api/autotrade?min_stars=' + AUTO_TRADE_MIN_STARS)
+            .then(function(resp) { return resp.json(); })
+            .then(function(data) {
+                if (data.error) {
+                    appendTradeLog('error', null, 'Scan failed: ' + data.error);
+                    return;
+                }
+                // Update badge
+                if (autoTradeBadge) {
+                    autoTradeBadge.textContent = 'Scanned ' + data.scanned + ' signals, ' + data.eligible + ' eligible';
+                }
+                // Log each executed trade
+                if (data.traded && data.traded.length > 0) {
+                    for (var i = 0; i < data.traded.length; i++) {
+                        appendTradeLog('executed', data.traded[i], null);
+                    }
+                    playAlert();
+                } else {
+                    appendTradeLog('idle', null, 'No ' + AUTO_TRADE_MIN_STARS + '\u2605+ signals found (' + data.scanned + ' scanned)');
+                }
+                // Log any errors
+                if (data.errors && data.errors.length > 0) {
+                    for (var j = 0; j < data.errors.length; j++) {
+                        appendTradeLog('error', null, data.errors[j].ticker + ': ' + data.errors[j].error);
+                    }
+                }
+            })
+            .catch(function(e) {
+                appendTradeLog('error', null, 'Request failed: ' + e.message);
+            })
+            .finally(function() {
+                isAutoTrading = false;
+                if (autoTradeTimer) {
+                    autoTradeBtn.textContent = '\u25b3 AutoTrade: ON (' + autoTradeCountdown + 's)';
+                }
+            });
+    }
+
+    function appendTradeLog(type, trade, message) {
+        var now = new Date().toLocaleTimeString();
+        var row = document.createElement('div');
+
+        if (type === 'executed' && trade) {
+            var sideLabel = trade.side === 'yes' ? 'LONG' : 'SHORT';
+            var sideClass = trade.side === 'yes' ? 'side-long' : 'side-short';
+            row.className = 'autotrade-row autotrade-executed';
+            row.innerHTML =
+                '<span class="atlog-time">' + now + '</span>' +
+                '<span class="atlog-status executed">EXECUTED</span>' +
+                '<span class="atlog-ticker">' + trade.ticker + '</span>' +
+                '<span class="atlog-side ' + sideClass + '">' + sideLabel + '</span>' +
+                '<span class="atlog-price">$' + trade.price.toFixed(2) + ' \u00d7 ' + trade.count + '</span>' +
+                '<span class="atlog-order">' + (trade.order_id ? trade.order_id.slice(0, 8) + '...' : '') + '</span>';
+        } else if (type === 'error') {
+            row.className = 'autotrade-row autotrade-error';
+            row.innerHTML =
+                '<span class="atlog-time">' + now + '</span>' +
+                '<span class="atlog-status error">ERROR</span>' +
+                '<span class="atlog-msg">' + (message || '') + '</span>';
+        } else {
+            row.className = 'autotrade-row autotrade-idle';
+            row.innerHTML =
+                '<span class="atlog-time">' + now + '</span>' +
+                '<span class="atlog-status idle">IDLE</span>' +
+                '<span class="atlog-msg">' + (message || '') + '</span>';
+        }
+
+        // Newest at top
+        if (autoTradeLog.firstChild) {
+            autoTradeLog.insertBefore(row, autoTradeLog.firstChild);
+        } else {
+            autoTradeLog.appendChild(row);
+        }
+
+        // Cap log at 50 rows
+        while (autoTradeLog.children.length > 50) {
+            autoTradeLog.removeChild(autoTradeLog.lastChild);
         }
     }
 

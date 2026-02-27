@@ -3,11 +3,10 @@
 Prices binary options using a log-normal model (Black-Scholes d2 term)
 and finds mispriced contracts vs the market.
 
-v3.1 — Rebalanced after v3 over-corrected (filtering out ALL signals):
-  - Kept raised vol estimates (genuine fix for phantom edges)
-  - Relaxed combined filters — v3 thresholds were unreachable together
-  - Reduced counter-trend penalty to -12 (still discourages, doesn't block)
-  - Kept reduced position sizes + max position cap
+v3.2 — Counter-trend penalty raised from -12 to -30:
+  - Counter-trend shorts were dominating and losing (17 NO vs 5 YES in first session)
+  - -30 penalty means counter-trend only passes with large edge + perfect R/R + timing
+  - Trend-aligned and neutral signals unchanged
 """
 
 from __future__ import annotations
@@ -154,12 +153,12 @@ def compute_confidence(
 ) -> int:
     """Score a trade opportunity 0-100.
 
-    v3.1 — Rebalanced scoring:
+    v3.2 — Counter-trend penalty raised:
       Edge size:      0-30 pts  (4c+ starts scoring)
       EMA alignment:  0-25 pts  (trend-aligned gets full bonus)
       Risk/reward:    0-20 pts
       Time window:    0-15 pts
-      Counter-trend:  -12 pts penalty (discourages but doesn't block)
+      Counter-trend:  -30 pts penalty (needs large edge + perfect conditions)
       Edge bonus:     +10 pts for very large edges (>10c)
     """
     score = 0
@@ -187,8 +186,9 @@ def compute_confidence(
     elif trend == "neutral":
         score += 10
     elif counter:
-        # Penalty — discourages counter-trend but doesn't completely block
-        score -= 12
+        # Penalty — -30 means only exceptional counter-trend signals pass
+        # (requires large edge + great R/R + perfect timing to reach 40)
+        score -= 30
 
     # Risk/reward (0-20)
     if rr >= 10:

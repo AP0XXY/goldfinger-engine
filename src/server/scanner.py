@@ -234,6 +234,96 @@ async def _scan_with_client(
         }
 
 
+# ── Star threshold → confidence mapping ──────────────────────
+
+_STAR_MIN_CONFIDENCE = {5: 90, 4: 75, 3: 60, 2: 50, 1: 0}
+
+# ── Autotrade dedup — tracks ticker+side → timestamp of last trade ──
+# Prevents re-entering the same position while the market is still live.
+_autotrade_dedup: dict[str, float] = {}
+_DEDUP_TTL_SECONDS = 15 * 60  # one full expiry window
+
+
+def _dedup_key(ticker: str, side: str) -> str:
+    return f"{ticker}:{side}"
+
+
+def _is_recently_traded(ticker: str, side: str) -> bool:
+    import time
+    key = _dedup_key(ticker, side)
+    last = _autotrade_dedup.get(key)
+    if last is None:
+        return False
+    return (time.time() - last) < _DEDUP_TTL_SECONDS
+
+
+def _mark_traded(ticker: str, side: str) -> None:
+    import time
+    _autotrade_dedup[_dedup_key(ticker, side)] = time.time()
+    # Prune stale entries
+    now = time.time()
+    stale = [k for k, t in _autotrade_dedup.items() if now - t >= _DEDUP_TTL_SECONDS]
+    for k in stale:
+        del _autotrade_dedup[k]
+
+
+# ── Auto-trade (scan + execute eligible signals) ─────────────
+
+async def run_autotrade(min_stars: int = 3) -> dict:
+    """Scan markets and auto-execute all signals meeting the star threshold.
+
+    Dedup: skips any ticker+side already traded within the last 15 minutes,
+    preventing the same signal from being entered multiple times before expiry.
+
+    Args:
+        min_stars: Minimum star rating to execute (1-5). Default 3.
+
+    Returns:
+        Dict with scanned count, eligible count, traded list, skipped count, and errors.
+    """
+    min_confidence = _STAR_MIN_CONFIDENCE.get(min_stars, 60)
+
+    raw = await run_scan(settle=False)
+    recs: list[TradeRecommendation] = raw["recommendations"]
+
+    eligible = [r for r in recs if r.confidence >= min_confidence]
+
+    traded = []
+    errors = []
+    skipped = 0
+
+    for rec in eligible:
+        if _is_recently_traded(rec.ticker, rec.side.value):
+            skipped += 1
+            logger.debug(f"Autotrade dedup: skipping {rec.ticker} {rec.side.value} (already traded recently)")
+            continue
+
+        try:
+            result = await run_trade(rec.ticker, rec.side.value, rec.price, rec.count)
+            if result.get("success"):
+                _mark_traded(rec.ticker, rec.side.value)
+                traded.append({
+                    "ticker": rec.ticker,
+                    "side": rec.side.value,
+                    "price": rec.price,
+                    "count": rec.count,
+                    "order_id": result.get("order_id", ""),
+                })
+            else:
+                errors.append({"ticker": rec.ticker, "error": result.get("error", "unknown")})
+        except Exception as e:
+            errors.append({"ticker": rec.ticker, "error": str(e)})
+
+    return {
+        "scanned": len(recs),
+        "eligible": len(eligible),
+        "traded": traded,
+        "skipped": skipped,
+        "errors": errors,
+        "min_stars": min_stars,
+    }
+
+
 # ── Standalone mode (reads .env) ─────────────────────────────
 
 async def run_scan(

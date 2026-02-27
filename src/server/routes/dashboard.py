@@ -47,23 +47,31 @@ async def dashboard(request: Request):
     settled = wins + losses
     win_rate = (wins / settled * 100) if settled > 0 else 0.0
 
-    # Chart data (cumulative PnL)
+    # Chart data — only settled trades (pnl != null), skip pending
     chart_labels = []
     chart_cum_pnl = []
     chart_trade_pnl = []
     cum = 0.0
     for t in trades:
-        chart_labels.append(t.get("timestamp", "")[:16])
         pnl_val = t.get("pnl")
-        if pnl_val is not None:
-            cum += pnl_val
-            chart_trade_pnl.append(round(pnl_val, 4))
-        else:
-            chart_trade_pnl.append(0)
+        if pnl_val is None:
+            continue
+        cum += pnl_val
+        chart_labels.append(t.get("timestamp", "")[:16])
+        chart_trade_pnl.append(round(pnl_val, 4))
         chart_cum_pnl.append(round(cum, 4))
 
-    # Trade history (last 30, reversed for newest-first)
-    trade_history = list(reversed(trades[-30:]))
+    # Trade history (last 30, newest-first) — compute net per row
+    def _enrich(t: dict) -> dict:
+        cost = t.get("price", 0) * t.get("count", 0) + t.get("fee", 0)
+        pnl = t.get("pnl")
+        if pnl is not None:
+            net = round(pnl, 4)          # settled: actual net (already fee-adjusted)
+        else:
+            net = round(-cost, 4)        # pending: show cost deployed (negative)
+        return {**t, "net": net}
+
+    trade_history = [_enrich(t) for t in reversed(trades[-30:])]
 
     templates = request.app.state.templates
     return templates.TemplateResponse(
