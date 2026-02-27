@@ -17,6 +17,7 @@ from pydantic import BaseModel
 
 from ..scanner import run_scan, run_scan_for_user, run_trade, run_trade_for_user, sync_trades_for_user
 from ..firewall import sanitize_recommendations, sanitize_stats
+from ...data.database import get_recent_signals, get_signal_stats
 
 logger = logging.getLogger(__name__)
 
@@ -170,4 +171,37 @@ async def sync_trades(req: SyncRequest):
         return JSONResponse(
             status_code=500,
             content={"error": "Sync failed."},
+        )
+
+
+# ── Signal history endpoints ────────────────────────────────
+
+@router.get("/signals")
+async def get_signals(limit: int = Query(100, description="Number of signals to return"), profitable_only: bool = Query(False)):
+    """Get recent arbitrage signals from persistent storage."""
+    try:
+        signals = get_recent_signals(limit=limit, profitable_only=profitable_only)
+        return {
+            "count": len(signals),
+            "signals": [s.to_dict() for s in signals],
+        }
+    except Exception as e:
+        logger.error(f"Failed to fetch signals: {e}", exc_info=True)
+        return JSONResponse(
+            status_code=500,
+            content={"error": "Failed to fetch signals"},
+        )
+
+
+@router.get("/signals/stats")
+async def get_signals_stats():
+    """Get statistics about stored signals."""
+    try:
+        stats = get_signal_stats()
+        return stats
+    except Exception as e:
+        logger.error(f"Failed to fetch signal stats: {e}", exc_info=True)
+        return JSONResponse(
+            status_code=500,
+            content={"error": "Failed to fetch signal stats"},
         )

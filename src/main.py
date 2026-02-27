@@ -27,6 +27,7 @@ from .exchanges.polymarket import PolymarketClient
 from .core.matcher import match_markets
 from .core.arbitrage import scan_all_opportunities
 from .data.collector import SpreadLogger, ScanResultLogger
+from .data.database import init_db, save_signal
 
 console = Console()
 logger = logging.getLogger("arb")
@@ -71,6 +72,23 @@ async def run_scan(
     # Detect arbitrage
     console.print(f"\n[dim]Scanning for arbitrage (min spread: ${min_spread}, min %: {min_spread_pct}%)...[/dim]")
     opportunities = scan_all_opportunities(matched, min_spread, min_spread_pct)
+
+    # Save opportunities to database
+    for opp in opportunities:
+        save_signal({
+            "timestamp": opp.timestamp,
+            "event_description": opp.matched_market.event_description,
+            "buy_yes_platform": opp.buy_yes_platform.value,
+            "buy_yes_price": opp.buy_yes_price,
+            "buy_no_platform": opp.buy_no_platform.value,
+            "buy_no_price": opp.buy_no_price,
+            "gross_spread": opp.gross_spread,
+            "estimated_fees": opp.estimated_fees,
+            "net_spread": opp.net_spread,
+            "net_spread_pct": opp.net_spread_pct,
+            "cost": opp.cost,
+            "is_profitable": int(opp.is_profitable),
+        })
 
     # Log scan results
     scan_logger.log_scan(
@@ -149,6 +167,9 @@ def _display_matched_spreads(matched):
 
 
 async def main_async(args: argparse.Namespace):
+    # Initialize database
+    init_db()
+    
     spread_logger = SpreadLogger()
     scan_logger = ScanResultLogger()
 

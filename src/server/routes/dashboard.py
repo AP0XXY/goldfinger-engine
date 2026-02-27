@@ -8,6 +8,8 @@ from pathlib import Path
 from fastapi import APIRouter, Request
 from fastapi.responses import HTMLResponse
 
+from ...data.database import get_recent_signals, get_signal_stats
+
 router = APIRouter()
 
 PNL_DIR = Path("data/pnl")
@@ -77,5 +79,36 @@ async def dashboard(request: Request):
             "chart_labels": json.dumps(chart_labels),
             "chart_cum_pnl": json.dumps(chart_cum_pnl),
             "chart_trade_pnl": json.dumps(chart_trade_pnl),
+        },
+    )
+
+
+@router.get("/signals", response_class=HTMLResponse)
+async def signals_dashboard(request: Request):
+    """Serve the arbitrage signals history dashboard."""
+    # Load recent signals
+    signals = get_recent_signals(limit=500)
+    stats = get_signal_stats()
+    
+    # Prepare data for display
+    signal_list = [s.to_dict() for s in signals]
+    
+    # Stats data
+    stats_data = {
+        "total": stats["total_signals"],
+        "profitable": stats["profitable_signals"],
+        "best_spread_pct": stats["best_spread"],
+        "platform_pairs": stats["platform_pairs"],
+    }
+    
+    templates = request.app.state.templates
+    return templates.TemplateResponse(
+        "signals.html",
+        {
+            "request": request,
+            "signals": signal_list,
+            "stats": stats_data,
+            "signals_json": json.dumps(signal_list),
+            "stats_json": json.dumps(stats_data),
         },
     )

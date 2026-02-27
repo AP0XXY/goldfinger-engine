@@ -8,6 +8,8 @@ Supports two modes:
 
 from __future__ import annotations
 
+import asyncio
+import logging
 import os
 from pathlib import Path
 
@@ -18,6 +20,10 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
 from .routes.api import router as api_router
+from .background import background_scanner
+from ..data.database import init_db
+
+logger = logging.getLogger(__name__)
 
 # Resolve paths relative to the project root
 _PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent
@@ -89,6 +95,32 @@ def create_app() -> FastAPI:
 
     # ── API routes ─────────────────────────────────────────────
     app.include_router(api_router, prefix="/api")
+
+    # ── Background scanner ───────────────────────────────────────
+    scanner_task = None
+    
+    @app.on_event("startup")
+    async def startup_event():
+        """Initialize database and start background scanner."""
+        nonlocal scanner_task
+        init_db()
+        logger.info("Database initialized")
+        
+        # Start background scanner
+        scanner_task = asyncio.create_task(background_scanner())
+        logger.info("Background scanner started")
+    
+    @app.on_event("shutdown")
+    async def shutdown_event():
+        """Stop background scanner on shutdown."""
+        nonlocal scanner_task
+        if scanner_task:
+            scanner_task.cancel()
+            try:
+                await scanner_task
+            except asyncio.CancelledError:
+                pass
+        logger.info("Background scanner stopped")
 
     return app
 
